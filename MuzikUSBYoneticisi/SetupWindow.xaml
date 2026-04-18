@@ -1,0 +1,29 @@
+<Window x:Class="MuzikUSBYoneticisi.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="İlk Kurulum - Müzik USB Yöneticisi" Height="220" Width="450"
+        WindowStartupLocation="CenterScreen" WindowStyle="None"
+        AllowsTransparency="True" Background="Transparent" FontFamily="Segoe UI">
+    <Border Background="#FF1E1E24" CornerRadius="12" BorderBrush="#FF2F3136" BorderThickness="1">
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock x:Name="TitleText" Text="İlk Başlangıç: Eksik Bileşenler Yükleniyor" Grid.Row="0" Foreground="#FF5E8EE4" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Oto teyp kalitesinde MP3/Ses motoru (FFmpeg) indiriliyor..." Grid.Row="0" Margin="0,25,0,0" Foreground="#FFAAAAAA" FontSize="12" HorizontalAlignment="Center"/>
+
+            <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,20,0,0">
+                <ProgressBar x:Name="DownloadProgressBar" Height="8" Minimum="0" Maximum="100" Value="0" Background="#FF333333" Foreground="#FF10B981" BorderThickness="0"/>
+                <Grid Margin="0,10,0,0">
+                    <TextBlock x:Name="ProgressDetailsText" Text="Bağlanıyor..." Foreground="#FF888888" FontSize="11" HorizontalAlignment="Left"/>
+                    <TextBlock x:Name="PercentageText" Text="%0" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right"/>
+                </Grid>
+            </StackPanel>
+
+            <TextBlock x:Name="StatusText" Text="Lütfen bekleyiniz, bu işlem internet hızınıza bağlı olarak bir süre alabilir." Grid.Row="2" Foreground="#FFE6E6E6" FontSize="11" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        </Grid>
+    </Border>
+</Window>

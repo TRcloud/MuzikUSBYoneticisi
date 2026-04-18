@@ -214,7 +214,7 @@
 
                         <!-- Dinamik Canlı Liste (Fotoğraflı) -->
                         <Border Grid.Row="2" Background="#FF191A1E" BorderBrush="#FF2F3136" BorderThickness="1" CornerRadius="6" Margin="0,0,0,15">
-                            <ListBox x:Name="SearchResultsListBox" Background="Transparent" Foreground="#FFE6E6E6" BorderThickness="0" Padding="5" SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SearchResultsListBox_SelectionChanged">
+                            <ListBox x:Name="SearchResultsListBox" AllowDrop="True" Drop="SearchResultsListBox_Drop" Background="Transparent" Foreground="#FFE6E6E6" BorderThickness="0" Padding="5" SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SearchResultsListBox_SelectionChanged">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Background" Value="Transparent"/>
@@ -245,6 +245,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <CheckBox IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Margin="0,0,10,0" VerticalAlignment="Center"/>
 
@@ -263,7 +264,11 @@
                                                 <!-- Download İlerlemesi İçin Minik ProgressBar -->
                                                 <ProgressBar Visibility="{Binding IsDownloading}" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" Height="3" Margin="0,4,10,0" Foreground="#FF10B981" BorderThickness="0" Background="#FF333333"/>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="3" Text="{Binding Duration}" Foreground="#FF888888" VerticalAlignment="Center" Margin="10,0,0,0" HorizontalAlignment="Right" FontSize="11"/>
+
+                                            <!-- Mini Player Butonu -->
+                                            <Button Grid.Column="3" Content="▶" Width="30" Height="25" Margin="0,0,5,0" Cursor="Hand" ToolTip="Şarkıyı/İneni dinlemek için tıklayın." Foreground="#FF25C158" Background="Transparent" BorderThickness="0" CommandParameter="{Binding}" Click="PreviewBtn_Click"/>
+
+                                            <TextBlock Grid.Column="4" Text="{Binding Duration}" Foreground="#FF888888" VerticalAlignment="Center" Margin="5,0,0,0" HorizontalAlignment="Right" FontSize="11"/>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -276,13 +281,15 @@
                                 <ColumnDefinition Width="1*"/>
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="1*"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="1*"/>
                             </Grid.ColumnDefinitions>
 
                             <Button Grid.Column="0" Click="DownloadBtn_Click" Cursor="Hand" Height="36" ToolTip="Listede seçili olan tüm şarkıları maksimum kalitede PC'nize indirip, FFmpeg ile sesini normalleştirir. (Aynı anda 3 müzik indirilir)">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="DlBtnBorder" Background="#FFEF4444" CornerRadius="6">
-                                            <TextBlock Text="Listeyi Arşive İndir (PC)" Foreground="White" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Arşive İndir (PC)" Foreground="White" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
@@ -293,7 +300,23 @@
                                 </Button.Template>
                             </Button>
 
-                            <Button Grid.Column="2" Click="SyncBtn_Click" Cursor="Hand" Height="36" ToolTip="PC'deki arşiv klasörünüzü, hedef USB Diskinize otomatik olarak aktarır.">
+                            <!-- YENİ EKLENEN BUTON: Akıllı Klasörleme Ayarı Toggles -->
+                            <Button Grid.Column="2" Click="ToggleSmartFolderBtn_Click" Cursor="Hand" Height="36" ToolTip="Akıllı klasörleme yöntemini değiştirir. Sanatçıya göre klasör veya Hepsi tek yere atılır.">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="SmartBtnBorder" Background="#FF3B82F6" CornerRadius="6">
+                                            <TextBlock x:Name="SmartBtnIcon" Text="Klasörleme: Açık" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="SmartBtnBorder" Property="Background" Value="#FF2563EB"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button Grid.Column="4" Click="SyncBtn_Click" Cursor="Hand" Height="36" ToolTip="PC'deki arşiv klasörünüzü, hedef USB Diskinize otomatik olarak aktarır ve m3u oluşturur">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="SyncBtnBorder" Background="#FF10B981" CornerRadius="6">
@@ -312,10 +335,19 @@
                 </Border>
             </Grid>
 
-            <!-- 3. Durum Çubuğu -->
-            <Border Grid.Row="3" Background="#FF222329" BorderBrush="#FF2F3136" BorderThickness="1,1,1,1" CornerRadius="8" Margin="20,0,20,5" Padding="15,8">
-                <TextBlock x:Name="StatusTextBlock" Text="Hazır" Foreground="#FF10B981" FontWeight="SemiBold" FontSize="12"/>
-            </Border>
+            <!-- 3. Durum Çubuğu ve Copyright Bilgisi -->
+            <Grid Grid.Row="3" Margin="20,0,20,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#FF222329" BorderBrush="#FF2F3136" BorderThickness="1" CornerRadius="8" Padding="15,8">
+                    <TextBlock x:Name="StatusTextBlock" Text="Hazır" Foreground="#FF10B981" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                </Border>
+                <Border Grid.Column="1" Margin="10,0,0,0" ToolTip="Geliştirici Bilgileri" Background="Transparent" CornerRadius="8" Cursor="Hand" MouseLeftButtonDown="Copyright_MouseLeftButtonDown">
+                    <TextBlock Text="© 2024 Developed by Cloud" Foreground="#FF555555" FontSize="11" VerticalAlignment="Center" FontWeight="SemiBold" Margin="5,0"/>
+                </Border>
+            </Grid>
 
             <!-- 4. Canlı Log -->
             <Border Grid.Row="4" Background="#FF191A1E" BorderBrush="#FF2F3136" BorderThickness="1" CornerRadius="8" Margin="20,5,20,15">

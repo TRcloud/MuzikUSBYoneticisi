@@ -1,0 +1,58 @@
+MÜZİK USB YÖNETİCİSİ - PROJE ANALİZİ VE GELİŞTİRME FİKİRLERİ
+
+=========================================
+MEVCUT DURUM ANALİZİ:
+Projeniz WPF ve .NET 8 kullanılarak geliştirilmiş modern bir uygulama. 
+Şu ana kadar eklediğiniz YouTube'dan oynatma listesi/kanal indirme özelliği, 
+mükerrer indirmeyi engelleme, gereksiz videoları/dosyaları USB'den temizleyip 
+"Araç Teybi" için uygun zemin hazırlama ve Remix/Orijinal filtrelemesi 
+gerçekten başarılı düşünülmüş. 
+
+Aşağıda projeyi daha profesyonel ve eksiksiz bir "Oto Teyp Müzik Yöneticisi" 
+yapacak fikirleri sizin istediğiniz şekilde iki kategoriye ayırdım:
+
+=========================================
+1. BENİM EKLEYECEKLERİM (Projeyi Çok Daha Stabil ve İşlevsel Kılacak Temel Geliştirmeler)
+=========================================
+
+* MP3 Formatına Kesin Dönüşüm (FFmpeg Entegrasyonu)
+  YouTube üzerinden inen dosyalar genelde m4a veya webm formatındadır. Eski araç teypleri bu formatlarda hata verebilir veya atlayabilir.
+  Dosyaları indirirken FFmpeg (Örn: Xabe.FFmpeg kütüphanesi) kullanarak arka planda direkt .mp3 (320 kbps) formatına çevirebilirsiniz.
+
+* Otomatik ID3 Etiketleme ve Kapak Görseli (Album Art)
+  İndirilen videoların başlığı genelde "Sanatçı - Şarkı Adı | Official Video" gibi karışık olur. 
+  "TagLib-Sharp" kütüphanesi eklenerek, şarkının Sanatçı Adı, Şarkı Adı ve en önemlisi Youtube'dan çekilen Kapak Fotoğrafı (Thumbnail) mp3 dosyasının içine gömülebilir. Teyp ekranında mükemmel görünür.
+
+* Ses Seviyesini Eşitleme (Audio Normalization)
+  En büyük teyp sorunlarından biri, bir şarkı çok kısıkken diğerinin çok yüksek sesle (patlayarak) başlamasıdır. 
+  Şarkılar dönüştürülürken ses yüksekliklerinin aynı desibelde (örneğin 89dB - LUFS) eşitlenmesi sağlanabilir.
+
+* İsim Standardizasyonu
+  Dosya isimlerindeki emojileri, "Official Video", "Lyrics", "4K" gibi gereksiz etiketleri otomatik silen bir Regex temizleyici formülü eklenebilir.
+
+=========================================
+2. EKSTRA EKLEMEK İSTEDİKLERİM (Premium Ve İleri Düzey Fikirler)
+=========================================
+
+* Tak ve Eşitle (Auto-Sync)
+  Kullanıcı arka planda PC'de arşivi günceller, uygulamayı açık bırakır. Önceden tanıtılmış USB bilgisayara takıldığı an "Yeni şarkılar bulundu, USB'ye kopyalansın mı?" diye bir uyarı çıkarıp tek tıkla yeni eklenen kısımları senkronize eder.
+
+* Akıllı Klasörleme / Hiyerarşi
+  USB içerisine dümdüz atmak yerine, indirenin girdiği veya Youtube Channel ayarlarına göre "Sanatçılar > Tarkan > Şarkı C" veya "Pop / Arabesk / Yabancı" şeklinde otomatik klasör oluşturup dosyaları içine sınıflandırma sistemi.
+
+* Otomatik M3U (Playlist) Dosyası Üretici
+  Araç teyplerinde listeler arası gezmek zordur. USB içine "Karışık Pop.m3u", "Yolculuk Listesi.m3u" gibi çalma listesi dosyaları oluşturarak sürücüye kolaylık sağlanabilir.
+
+* İntro / Outro Sessizlik Kırpıcı
+  Youtube'da müzik kliplerinin başlarında genelde 10-15 saniyelik film sahneleri veya sessizlikler olur. Ses dalgasını analiz edip müziğin başladığı anı yakalayarak baştaki gereksiz sessizliği kırpan bir mini algoritma harika bir "Premium" özellik olur.
+
+* Spotify Link Desteği
+  Dünyada çok popüler. Kişi sadece YouTube linki değil, Spotify çalma listesi linki yapıştırır; uygulama o listedeki şarkıların adlarını okuyup otomatik olarak YouTube'da aratır ve indirir.
+
+* Klasörleme ile alaklı olarak, kullanıcıya "Bu şarkıyı hangi klasöre atmak istersiniz?" diye sormak yerine, uygulamanın kendi içinde "Sanatçı Adı" veya "Tür" gibi seçenekler sunarak tek tıkla klasörleme yapabilmesi ve bazı teyp modellerinin klasörleme desteği varsa ona göre USB'ye atması yoksa direkt kök dizine atması gibi bir akıllı klasörleme sistemi eklenebilir yani direkt 
+şarkıyı direkt atması gibi gibi bir seçenek sunulabilir.
+
+
+=========================================
+NOT:
+Bu dosyayı referans olarak tutabilir, eklemek istediğiniz özelliği seçtiğinizde "TagLib entegrasyonu yapmak istiyorum, koda nasıl ekleriz?" şeklinde ilerleyebiliriz.

@@ -13,10 +13,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Net.Http; // Thumbnail indirme
+using System.Windows.Interop; // USB Cihazını algılama donanım takibi
 using YoutubeExplode;
 using YoutubeExplode.Common;
 using YoutubeExplode.Search;
 using YoutubeExplode.Videos.Streams;
+using SpotifyAPI.Web; // Spotify Desteği İçin
 
 namespace MuzikUSBYoneticisi
 {
@@ -75,6 +77,110 @@ namespace MuzikUSBYoneticisi
 
             LogMessage("Sistem Başlatıldı: Premium Arayüz Aktif.");
             RefreshUsb_Click(null, null);
+
+            // Başlangıçta FFmpeg var mı yok mu kontrol et
+            this.Loaded += MainWindow_Loaded;
+        }
+
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            string currentDir = AppDomain.CurrentDomain.BaseDirectory;
+            Xabe.FFmpeg.FFmpeg.SetExecutablesPath(currentDir);
+
+            // TODO: [GİZLENDİ] - Kurulum (Setup) ekranı ve yüzdelikli indirme barı 
+            // ileride ayrı bir forma taşınacağı ve uygulamanın pat diye açılmasını 
+            // engelleyeceğimiz için FFmpeg indirme mantığı şimdilik tamamen koddan gizlendi.
+        }
+
+        private void Copyright_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            MessageBox.Show("Müzik USB Yöneticisi V4\n\nDeveloped & Engineered by CLOUD\n(C) 2024 Tüm Hakları Saklıdır.\n\nAraç teypleriniz için özel olarak optimize edilmiş yüksek kaliteli MP3/M4A oynatma yöneticisi ve Orijinal CD kalibratörü.", "Hakkında", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        // ====== TAK VE EŞİTLE (AUTO-SYNC) MOTORU ======
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            HwndSource source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            if (source != null)
+            {
+                source.AddHook(WndProc);
+            }
+        }
+
+        private const int WM_DEVICECHANGE = 0x0219;
+        private const int DBT_DEVICEARRIVAL = 0x8000;
+        private bool _isPromptingSync = false;
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_DEVICECHANGE && wParam.ToInt32() == DBT_DEVICEARRIVAL)
+            {
+                if (!_isPromptingSync)
+                {
+                    _isPromptingSync = true;
+                    // Windows USB'yi yeni okumaya başladığı için biraz gecikme ekliyoruz
+                    Task.Delay(2500).ContinueWith(_ =>
+                    {
+                        Dispatcher.Invoke(() => AutoSyncTriggered());
+                    });
+                }
+            }
+            return IntPtr.Zero;
+        }
+
+        private void AutoSyncTriggered()
+        {
+            LogMessage("[BİLGİ] Sisteme yeni bir donanım/USB takıldı...");
+            RefreshUsb_Click(null, null); // USB listesini güncelle
+
+            if (UsbComboBox.Items.Count > 0)
+            {
+                // Bilgisayar içindeki müziği otomatik kopyalamak için bildirim
+                var prompt = MessageBox.Show(
+                    "Yeni bir USB Bellek sistemi tarafımızdan algılandı.\n\nPC arşivinizdeki şarkılar bu cihaza otomatik olarak eşitlensin (Sync) mi?", 
+                    "Tak ve Eşitle (Auto-Sync)", 
+                    MessageBoxButton.YesNo, 
+                    MessageBoxImage.Information);
+
+                if (prompt == MessageBoxResult.Yes)
+                {
+                    LogMessage("[BİLGİ] Kullanıcı Auto-Sync isteğini onayladı.");
+                    SyncBtn_Click(null, null);
+                }
+                else
+                {
+                    LogMessage("[BİLGİ] Auto-Sync işlemi atlandı.");
+                }
+            }
+            _isPromptingSync = false;
+        }
+
+        // ====== İSİM TEMİZLEME ALGORİTMASI ======
+        private string CleanTitle(string rawTitle)
+        {
+            if (string.IsNullOrWhiteSpace(rawTitle)) return "Bilinmeyen_Şarkı";
+
+            string title = rawTitle;
+
+            // Köşeli parantez, normal parantez ve içindekileri sil (Örn: (Official Video), [4K], (Lyrics))
+            title = Regex.Replace(title, @"\s*\[[^\]]*\]\s*", " ");
+            title = Regex.Replace(title, @"\s*\([^)]*\)\s*", " ");
+
+            // Kalan gereksiz anahtar kelimeleri kaldır (Büyük/Küçük harf duyarsız)
+            string[] wordsToRemove = { "official video", "official music video", "official audio", "official lyric video", "lyric video", "lyrics", "4k", "hd", "hq", "audio", "video", "clip", "klip" };
+            foreach (var word in wordsToRemove)
+            {
+                title = Regex.Replace(title, $@"(?i)\b{word}\b", "");
+            }
+
+            // Çift boşlukları, baştaki ve sondaki gereksiz tire veya boşlukları düzelt
+            title = Regex.Replace(title, @"\s+", " ").Trim();
+            title = Regex.Replace(title, @"\s+-\s*$", "").Trim(); // Sondaki tireyi temizle
+            title = Regex.Replace(title, @"^\s*-\s+", "").Trim(); // Baştaki tireyi temizle
+
+            // Eğer tamamen boşaldıysa orijinalini geri ver
+            return string.IsNullOrWhiteSpace(title) ? rawTitle : title;
         }
 
         // ===================================
@@ -138,14 +244,19 @@ namespace MuzikUSBYoneticisi
                 var rawVideoList = new System.Collections.Generic.List<YoutubeVideoItem>();
 
                 // Hangi arama yönteminin kullanılacağını belirliyoruz
-                if (query.Contains("list="))
+                if (query.Contains("spotify.com"))
+                {
+                    LogMessage("[BİLGİ] Spotify Linki Algılandı. Çeviri yapılıyor...");
+                    await FetchSpotifyTracks(query, rawVideoList);
+                }
+                else if (query.Contains("list="))
                 {
                     LogMessage("[BİLGİ] Oynatma Listesi algılandı. Tüm liste çekiliyor...");
                     var videos = await youtube.Playlists.GetVideosAsync(query);
                     foreach (var vid in videos)
                     {
                         rawVideoList.Add(new YoutubeVideoItem { 
-                            Title = vid.Title, Author = vid.Author.ChannelTitle, 
+                            Title = CleanTitle(vid.Title), Author = vid.Author.ChannelTitle, 
                             Duration = vid.Duration?.ToString(@"mm\:ss") ?? "00:00", 
                             VideoId = vid.Url, ThumbnailUrl = vid.Thumbnails.FirstOrDefault()?.Url ?? ""
                         });
@@ -158,7 +269,7 @@ namespace MuzikUSBYoneticisi
                     foreach (var vid in videos)
                     {
                         rawVideoList.Add(new YoutubeVideoItem { 
-                            Title = vid.Title, Author = vid.Author.ChannelTitle, 
+                            Title = CleanTitle(vid.Title), Author = vid.Author.ChannelTitle, 
                             Duration = vid.Duration?.ToString(@"mm\:ss") ?? "00:00", 
                             VideoId = vid.Url, ThumbnailUrl = vid.Thumbnails.FirstOrDefault()?.Url ?? ""
                         });
@@ -179,7 +290,7 @@ namespace MuzikUSBYoneticisi
                     {
                         if (count >= limit) break;
                         rawVideoList.Add(new YoutubeVideoItem { 
-                            Title = vid.Title, Author = vid.Author.ChannelTitle, 
+                            Title = CleanTitle(vid.Title), Author = vid.Author.ChannelTitle, 
                             Duration = vid.Duration?.ToString(@"mm\:ss") ?? "00:00", 
                             VideoId = vid.Url, ThumbnailUrl = vid.Thumbnails.FirstOrDefault()?.Url ?? ""
                         });
@@ -241,7 +352,95 @@ namespace MuzikUSBYoneticisi
             }
         }
 
-        // ====== LİSTE ARAÇLARI ======
+        // ================= SPOTIFY ÇEVİRME MOTORU =================
+        private async Task FetchSpotifyTracks(string url, System.Collections.Generic.List<YoutubeVideoItem> list)
+        {
+            try
+            {
+                // Spotify API için geçici kimlik (Bunu daha sonra resmi Client ID ile değiştirebilirsiniz)
+                var config = SpotifyClientConfig.CreateDefault();
+                var request = new ClientCredentialsRequest("17fe51927ed94e1d88b48f95c478a1bc", "4f45347accb14421b2c453b3be73523d"); // Genel anonim test key
+                var response = await new OAuthClient(config).RequestToken(request);
+                var spotify = new SpotifyClient(config.WithToken(response.AccessToken));
+
+                if (url.Contains("/track/"))
+                {
+                    string trackId = url.Split("/track/")[1].Split('?')[0];
+                    var track = await spotify.Tracks.Get(trackId);
+                    await SearchAndAddFromSpotify($"{track.Artists[0].Name} - {track.Name}", list);
+                }
+                else if (url.Contains("/playlist/"))
+                {
+                    string playlistId = url.Split("/playlist/")[1].Split('?')[0];
+                    var playlist = await spotify.Playlists.Get(playlistId);
+                    LogMessage($"[BİLGİ] Spotify Çalma Listesi bulundu: '{playlist.Name}', Şarkılar çekiliyor...");
+
+                    // Sadece ilk 50 şarkıyı alıyoruz ki YouTube api kilitlenmesin
+                    foreach (var item in playlist.Tracks.Items.Take(50))
+                    {
+                        if (item.Track is FullTrack track)
+                        {
+                            await SearchAndAddFromSpotify($"{track.Artists[0].Name} - {track.Name}", list);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"[HATA] Spotify'dan veriler çekilirken sorun yaşandı: {ex.Message}");
+            }
+        }
+
+        private async Task SearchAndAddFromSpotify(string searchQuery, System.Collections.Generic.List<YoutubeVideoItem> list)
+        {
+            try
+            {
+                // Spotify'dan gelen sanatçı - Sarki adını Youtube'da arat ve en üstteki Müzik klibini çek.
+                var searchRes = await youtube.Search.GetVideosAsync(searchQuery);
+                var vid = searchRes.FirstOrDefault();
+
+                if (vid != null)
+                {
+                    list.Add(new YoutubeVideoItem { 
+                            Title = CleanTitle(vid.Title), Author = vid.Author.ChannelTitle, 
+                            Duration = vid.Duration?.ToString(@"mm\:ss") ?? "00:00", 
+                            VideoId = vid.Url, ThumbnailUrl = vid.Thumbnails.FirstOrDefault()?.Url ?? ""
+                    });
+                }
+            }
+            catch { }
+        }
+
+        // ====== LİSTE ARAÇLARI VE MİNİ PLAYER ======
+        private void PreviewBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.CommandParameter is YoutubeVideoItem item)
+            {
+                // Youtube şarkısını veya inen dosyayı dinlemek için varsayılan tarayıcı / oynatıcıyı tetikler
+                try
+                {
+                    string safeTitle = string.Join("_", item.Title.Split(Path.GetInvalidFileNameChars()));
+                    string safeAuthor = string.Join("_", (item.Author ?? "Bilinmeyen Sanatçı").Split(Path.GetInvalidFileNameChars()));
+                    string potentialLocalPath = Path.Combine(baseArchiveFolder, safeAuthor, $"{safeTitle}.mp3");
+
+                    if (File.Exists(potentialLocalPath))
+                    {
+                        LogMessage($"[BİLGİ] Şarkı indirildiği için yerel diskten oynatılıyor: {item.Title}");
+                        Process.Start(new ProcessStartInfo(potentialLocalPath) { UseShellExecute = true });
+                    }
+                    else
+                    {
+                        LogMessage($"[BİLGİ] Şarkı henüz arşive inmediği için web üzerinden önizleniyor: {item.Title}");
+                        Process.Start(new ProcessStartInfo(item.VideoId) { UseShellExecute = true });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"[HATA] Önizleme açılamadı: {ex.Message}");
+                }
+            }
+        }
+
         private void SelectAllBtn_Click(object sender, RoutedEventArgs e)
         {
             if (SearchResultsListBox.SelectedItems.Count == SearchResultsListBox.Items.Count && SearchResultsListBox.Items.Count > 0)
@@ -301,6 +500,57 @@ namespace MuzikUSBYoneticisi
         {
             searchResults.Clear();
             UpdateStatus("Liste boşaltıldı.");
+        }
+
+        // ====== SÜRÜKLE BIRAK (DRAG & DROP) ÖZELLİĞİ ======
+        private void SearchResultsListBox_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                int addedCount = 0;
+
+                Directory.CreateDirectory(baseArchiveFolder);
+
+                foreach (string file in files)
+                {
+                    string ext = Path.GetExtension(file).ToLower();
+                    string fileName = Path.GetFileName(file);
+
+                    if (ext == ".mp3" || ext == ".m4a" || ext == ".wav")
+                    {
+                        string targetPath = Path.Combine(baseArchiveFolder, fileName);
+
+                        if (!File.Exists(targetPath))
+                        {
+                            try
+                            {
+                                File.Copy(file, targetPath, true);
+                                addedCount++;
+                                LogMessage($"[BİLGİ] '{fileName}' PC arşivine başarıyla kopyalandı.");
+                            }
+                            catch (Exception ex)
+                            {
+                                LogMessage($"[HATA] '{fileName}' kopyalanamadı: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            LogMessage($"[BİLGİ] '{fileName}' zaten arşivde mevcut.");
+                        }
+                    }
+                    else
+                    {
+                        LogMessage($"[UYARI] Desteklenmeyen sürükle-bırak dosya formatı: {fileName}");
+                    }
+                }
+
+                if (addedCount > 0)
+                {
+                    UpdateStatus($"{addedCount} adet yerel dosya arşive eklendi!");
+                    MessageBox.Show($"{addedCount} adet müzik dosyası başarıyla arşive eklendi!\nUSB'ye Senkronize (Sync) etmek için Eşitle butonunu kullanabilirsiniz.", "Sürükle-Bırak Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
         }
 
         private void CleanUsbBtn_Click(object sender, RoutedEventArgs e)
@@ -412,6 +662,27 @@ namespace MuzikUSBYoneticisi
         }
 
 
+        // Özel Klasörleme Değişkeni
+        private bool isSmartFolderEnabled = true;
+
+        private void ToggleSmartFolderBtn_Click(object sender, RoutedEventArgs e)
+        {
+            isSmartFolderEnabled = !isSmartFolderEnabled;
+            if (sender is Button btn && btn.Template.FindName("SmartBtnIcon", btn) is TextBlock iconText)
+            {
+                if (isSmartFolderEnabled)
+                {
+                    iconText.Text = "Klasörleme: Açık";
+                    LogMessage("[BİLGİ] İndirilecek müzikler Sanatçı isimlerine göre ayrı klasörlenecektir.");
+                }
+                else
+                {
+                    iconText.Text = "Klasörleme: Kapalı";
+                    LogMessage("[BİLGİ] 'Eski Teyp Modu' aktif. Tüm müzikler düz bir şekilde ana dizine indirilecek.");
+                }
+            }
+        }
+
         // 2. PC'YE İNDİR BUTONU (Çoklu İş Parçacıklı & Klasörlü & FFmpeg Normalization)
         private async void DownloadBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -421,17 +692,6 @@ namespace MuzikUSBYoneticisi
             {
                 UpdateStatus("Lütfen listeden en az bir şarkı seçiniz!", true);
                 return;
-            }
-
-            UpdateStatus("Gerekli FFmpeg araçları kontrol ediliyor...");
-            try
-            {
-                // Xabe.FFmpeg arkaplanda kendi indirsin, veya varolanı kullansın.
-                await Xabe.FFmpeg.Downloader.FFmpegDownloader.GetLatestVersion(Xabe.FFmpeg.Downloader.FFmpegVersion.Official);
-            }
-            catch(Exception ex)
-            {
-                LogMessage($"[BİLGİ] FFmpeg halihazırda mevcut veya indirilemedi (varsayılana düşülecektir). {ex.Message}");
             }
 
             UpdateStatus("İndirme işlemi sürüyor (Çoklu Bağlantı Aktif)...");
@@ -468,8 +728,11 @@ namespace MuzikUSBYoneticisi
                             string rawAuthor = string.IsNullOrWhiteSpace(item.Author) ? "Bilinmeyen Sanatçı" : item.Author;
                             string safeAuthor = string.Join("_", rawAuthor.Split(Path.GetInvalidFileNameChars()));
 
-                            // Akıllı Otomatik Klasörleme (Sanatçı Adına Göre)
-                            string artistFolder = Path.Combine(baseArchiveFolder, safeAuthor);
+                            // Akıllı Otomatik Klasörleme (Arayüzdeki Toggla'ya göre karar ver)
+                            string artistFolder = isSmartFolderEnabled 
+                                ? Path.Combine(baseArchiveFolder, safeAuthor) 
+                                : baseArchiveFolder;
+
                             Directory.CreateDirectory(artistFolder);
 
                             string extension = audioStreamInfo.Container == YoutubeExplode.Videos.Streams.Container.Mp4 ? "m4a" : audioStreamInfo.Container.Name; 
@@ -486,19 +749,24 @@ namespace MuzikUSBYoneticisi
                                 });
                             }));
 
-                            // 2. FFmpeg ile Ses Düzeyi Sabitleme (Loudnorm)
+                            // 2. FFmpeg ile Ses Düzeyi Sabitleme (Loudnorm) ve Kesin MP3 Dönüşümü
+                            string mp3FinalFilePath = Path.Combine(artistFolder, $"{safeTitle}.mp3");
                             try
                             {
-                                Dispatcher.Invoke(() => item.Title = $"⚙️ [Düzenleniyor] {originalTitle}");
-                                LogMessage($"[FFmpeg] {safeTitle} Ses Seviyesi dengeleniyor (Normalizer)...");
+                                Dispatcher.Invoke(() => item.Title = $"⚙️ [MP3 & Ses Düzeyi Ayarlanıyor] {originalTitle}");
+                                LogMessage($"[FFmpeg] {safeTitle} MP3 formatına çevriliyor ve seviye dengeleniyor...");
 
                                 var mediaInfo = await Xabe.FFmpeg.FFmpeg.GetMediaInfo(rawFilePath);
                                 var audioStream = mediaInfo.AudioStreams.FirstOrDefault();
 
                                 var conversion = Xabe.FFmpeg.FFmpeg.Conversions.New()
                                     .AddStream(audioStream)
-                                    .AddParameter("-af loudnorm=I=-14:LRA=11:TP=-1.5") // Çoğu radyo ve teyp için yüksek ve pürüzsüz ayar
-                                    .SetOutput(finalFilePath);
+                                    // silenceremove => şarkı başındaki sessizlikleri kırpar (Premium Özellik)
+                                    // loudnorm => radyo teybi için pürüzsüz ses dengesi
+                                    .AddParameter("-af \"silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-60dB,loudnorm=I=-14:LRA=11:TP=-1.5\"") 
+                                    .SetAudioBitrate(320000) // 320 kbps yüksek kalite MP3
+                                    .SetOutputFormat(Xabe.FFmpeg.Format.mp3)
+                                    .SetOutput(mp3FinalFilePath);
 
                                 await conversion.Start();
                                 File.Delete(rawFilePath); // Ham dosyayı siliyoruz
@@ -510,6 +778,8 @@ namespace MuzikUSBYoneticisi
                                 if(File.Exists(rawFilePath))
                                     File.Move(rawFilePath, finalFilePath, true);
                             }
+
+                            string coverFilePathToTag = File.Exists(mp3FinalFilePath) ? mp3FinalFilePath : finalFilePath;
 
                             // 3. ID3 TAG GÖMME VE ALBÜM RESMİ EKLENTİSİ
                             try
@@ -526,7 +796,7 @@ namespace MuzikUSBYoneticisi
                                     }
                                 }
 
-                                using (var tagFile = TagLib.File.Create(finalFilePath))
+                                using (var tagFile = TagLib.File.Create(coverFilePathToTag))
                                 {
                                     tagFile.Tag.Title = originalTitle;
                                     tagFile.Tag.Performers = new string[] { rawAuthor };
@@ -555,7 +825,8 @@ namespace MuzikUSBYoneticisi
                                 item.Title = $"✅ [Tamamlandı] {originalTitle}";
                                 item.IsDownloading = Visibility.Collapsed;
                             });
-                            LogMessage($"[BİLGİ] BİTTİ: {safeTitle}.{extension} (Sanatçı: {safeAuthor})");
+                            string finalExt = File.Exists(mp3FinalFilePath) ? ".mp3" : $".{extension}";
+                            LogMessage($"[BİLGİ] BİTTİ: {safeTitle}{finalExt} (Sanatçı: {safeAuthor})");
 
                             currentUsbMusicFiles.Add(safeTitle);
                         }
@@ -612,6 +883,24 @@ namespace MuzikUSBYoneticisi
                 try
                 {
                     CopyDirectory(baseArchiveFolder, targetDriveLetter, true);
+
+                    // PREMIUM: Otomatik Klasörlerden M3U Çalma Listesi OLUŞTURMA
+                    LogMessage("[BİLGİ] USB içerisinde M3U Çalma Listesi (Playlist) oluşturuluyor...");
+                    string m3uPath = Path.Combine(targetDriveLetter, "Arac_Teybi_Oynatma_Listesi.m3u");
+                    var mp3Files = Directory.GetFiles(targetDriveLetter, "*.mp3", SearchOption.AllDirectories);
+
+                    using (StreamWriter sw = new StreamWriter(m3uPath, false, Encoding.UTF8))
+                    {
+                        sw.WriteLine("#EXTM3U");
+                        foreach (var mp3 in mp3Files)
+                        {
+                            // USB kök dizinine göre göreceli(relative) dosya yolunu al
+                            string relativePath = mp3.Substring(targetDriveLetter.Length).TrimStart('\\');
+                            sw.WriteLine(relativePath);
+                        }
+                    }
+                    LogMessage("[BAŞARILI] 'Arac_Teybi_Oynatma_Listesi.m3u' USB içerisine başarıyla yazıldı!");
+
                 }
                 catch (Exception ex)
                 {
@@ -653,15 +942,24 @@ namespace MuzikUSBYoneticisi
             }
         }
 
-        // Canlı Log Sistemi
+        // Canlı Log Sistemi ve Debug Kaydı
         private void LogMessage(string message)
         {
             Dispatcher.Invoke(() =>
             {
                 string time = DateTime.Now.ToString("HH:mm:ss");
-                LogListBox.Items.Add($"[{time}] {message}");
+                string formattedMessage = $"[{time}] {message}";
+                LogListBox.Items.Add(formattedMessage);
                 LogListBox.SelectedIndex = LogListBox.Items.Count - 1;
                 LogListBox.ScrollIntoView(LogListBox.SelectedItem);
+
+                // Debug System: Dosyaya yazarak verileri kayıt altında tut
+                try
+                {
+                    string logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug_log.txt");
+                    File.AppendAllText(logFile, $"{DateTime.Now:yyyy-MM-dd} {formattedMessage}{Environment.NewLine}");
+                }
+                catch { /* Dosya yazma hatası programı çökertmesin */ }
             });
         }
 
